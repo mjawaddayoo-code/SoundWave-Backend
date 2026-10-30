@@ -1,18 +1,44 @@
 
-require('dotenv').config();
+import 'dotenv/config';
 
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const mongoose = require('mongoose');
-const rateLimit = require('express-rate-limit');
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import mongoose from 'mongoose';
+import rateLimit from 'express-rate-limit';
 
-const authRoutes = require('./routes/auth');
-const trackRoutes = require('./routes/tracks');
-const playlistRoutes = require('./routes/playlists');
-const uploadRoutes = require('./routes/upload');
+import authRoutes from './routes/auth.js';
+import trackRoutes from './routes/tracks.js';
+import playlistRoutes from './routes/playlists.js';
+import uploadRoutes from './routes/upload.js';
 
 const app = express();
+
+// Database connection
+let databaseConnection;
+
+export async function connectDatabase() {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+
+  if (!process.env.MONGO_URI) {
+    throw new Error('MONGO_URI is missing from environment variables');
+  }
+
+  if (!databaseConnection) {
+    databaseConnection = mongoose
+      .connect(process.env.MONGO_URI)
+      .catch((error) => {
+        databaseConnection = null;
+        throw error;
+      });
+  }
+
+  await databaseConnection;
+
+  return mongoose.connection;
+}
 
 // Security
 app.use(
@@ -32,7 +58,10 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN || '')
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin.replace(/\/$/, ''))
+      ) {
         return callback(null, true);
       }
 
@@ -69,7 +98,22 @@ const uploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// API Routes
+// Database connection before API requests
+app.use(async (req, res, next) => {
+  try {
+    await connectDatabase();
+    next();
+  } catch (error) {
+    console.error('MongoDB connection error:', error.message);
+
+    res.status(503).json({
+      success: false,
+      message: 'Database connection failed',
+    });
+  }
+});
+
+// API routes
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/tracks', trackRoutes);
 app.use('/api/playlists', playlistRoutes);
@@ -77,7 +121,7 @@ app.use('/api/upload', uploadLimiter, uploadRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.status(200).json({
+  res.json({
     success: true,
     message: 'SoundWave API is running',
     database:
@@ -95,7 +139,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// 404 handler
+// 404
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -120,37 +164,10 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Database connection
-let databaseConnection;
+// Local development server
+const PORT = process.env.PORT || 5000;
 
-async function connectDatabase() {
-  if (mongoose.connection.readyState === 1) {
-    return mongoose.connection;
-  }
-
-  if (!process.env.MONGO_URI) {
-    throw new Error('MONGO_URI is missing from environment variables');
-  }
-
-  if (!databaseConnection) {
-    databaseConnection = mongoose
-      .connect(process.env.MONGO_URI)
-      .catch((error) => {
-        databaseConnection = null;
-        throw error;
-      });
-  }
-
-  await databaseConnection;
-  console.log('MongoDB connected successfully');
-
-  return mongoose.connection;
-}
-
-// Local development
-if (require.main === module) {
-  const PORT = process.env.PORT || 5000;
-
+if (process.env.NODE_ENV !== 'production') {
   connectDatabase()
     .then(() => {
       app.listen(PORT, () => {
@@ -163,6 +180,4 @@ if (require.main === module) {
     });
 }
 
-// Export for serverless hosting
-module.exports = app;
-module.exports.connectDatabase = connectDatabase;
+export default app;
