@@ -1,3 +1,4 @@
+
 {
   "name": "soundwave-server",
   "version": "1.0.0",
@@ -6,9 +7,7 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "seed:admin": "node src/seedAdmin.js",
-    "seed:demo": "node src/seedDemoData.js",
-    "seed:catalog": "node src/seedBigCatalog.js"
+    "seed:admin": "node src/seedAdmin.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
